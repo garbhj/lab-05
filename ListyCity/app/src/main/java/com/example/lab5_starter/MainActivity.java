@@ -1,25 +1,39 @@
 package com.example.lab5_starter;
 
 import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements CityDialogFragment.CityDialogListener {
 
-    private Button addCityButton;
+    private Button addCityButton, delCityButton;
     private ListView cityListView;
+    private Boolean delToggled = false;
 
     private ArrayList<City> cityArrayList;
     private ArrayAdapter<City> cityArrayAdapter;
+
+    private FirebaseFirestore db;
+    private CollectionReference citiesRef;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,8 +46,11 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
             return insets;
         });
 
+        db = FirebaseFirestore.getInstance();
+        citiesRef = db.collection("cities");
         // Set views
         addCityButton = findViewById(R.id.buttonAddCity);
+        delCityButton = findViewById(R.id.buttonDelCity);
         cityListView = findViewById(R.id.listviewCities);
 
         // create city array
@@ -41,7 +58,20 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
         cityArrayAdapter = new CityArrayAdapter(this, cityArrayList);
         cityListView.setAdapter(cityArrayAdapter);
 
-        addDummyData();
+        citiesRef.addSnapshotListener((value, error) -> {
+            if (error != null) {
+                Log.e("Firestore", error. toString());
+            }
+            if (value != null && !value.isEmpty()) {
+                cityArrayList.clear();
+                for (QueryDocumentSnapshot snapshot : value) {
+                    String name = snapshot.getString("name");
+                    String province = snapshot.getString("province");
+                    cityArrayList.add(new City(name, province));
+                }
+                cityArrayAdapter.notifyDataSetChanged();
+            }
+        }) ;
 
         // set listeners
         addCityButton.setOnClickListener(view -> {
@@ -49,21 +79,40 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
             cityDialogFragment.show(getSupportFragmentManager(),"Add City");
         });
 
-        cityListView.setOnItemClickListener((adapterView, view, i, l) -> {
-            City city = cityArrayAdapter.getItem(i);
-            CityDialogFragment cityDialogFragment = CityDialogFragment.newInstance(city);
-            cityDialogFragment.show(getSupportFragmentManager(),"City Details");
+        delCityButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (!delToggled) {
+                    delToggled = true;
+                    Toast.makeText(MainActivity.this, "Click a city to delete it | Untoggle button to turn off.", Toast.LENGTH_SHORT).show();
+                    /** from https://stackoverflow.com/questions/13842447/android-set-button-background-programmatically
+                     * Author: sojin
+                     * Answered: Dec 14, 2015 */
+                    delCityButton.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.red));
+                } else {
+                    delToggled = false;
+                    delCityButton.setBackgroundColor(ContextCompat.getColor(MainActivity.this, R.color.normal));
+                }
+            }
         });
 
+        cityListView.setOnItemClickListener((adapterView, view, i, l) -> {
+            City city = cityArrayAdapter.getItem(i);
+            if (delToggled) {
+                deleteCity(city);
+            } else {
+                CityDialogFragment cityDialogFragment = CityDialogFragment.newInstance(city);
+                cityDialogFragment.show(getSupportFragmentManager(), "City Details");
+            }
+        });
     }
 
     @Override
-    public void updateCity(City city, String title, String year) {
-        city.setName(title);
-        city.setProvince(year);
-        cityArrayAdapter.notifyDataSetChanged();
-
+    public void updateCity(City city, String name, String province) {
         // Updating the database using delete + addition
+        deleteCity(city);
+        city.setName(name);
+        city.setProvince(province);
+        addCity(city);
     }
 
     @Override
@@ -71,6 +120,29 @@ public class MainActivity extends AppCompatActivity implements CityDialogFragmen
         cityArrayList.add(city);
         cityArrayAdapter.notifyDataSetChanged();
 
+        DocumentReference documentReference = citiesRef.document(city.getName());
+        documentReference.set(city)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        Log.d("Firestore", "DocumentSnapshot successfully written!");
+                    }
+                });
+    }
+
+    @Override
+    public void deleteCity(City city){
+        cityArrayList.remove(city);
+        cityArrayAdapter.notifyDataSetChanged();
+
+        DocumentReference documentReference = citiesRef.document(city.getName());
+        documentReference.delete()
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        Log.d("Firestore", "DocumentSnapshot successfully written!");
+                    }
+                });
     }
 
     public void addDummyData(){
