@@ -6,8 +6,7 @@
 - **CCID:** `xudong11`
 
 ## References and Resources
-
-List any resources used here, or simply put `N/A` if not applicable.
+https://stackoverflow.com/questions/13842447/android-set-button-background-programmatically
 
 ## Verbal Collaboration
 
